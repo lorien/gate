@@ -4,7 +4,7 @@ VERSION="v26.5.3"
 TMP_DIR="$(mktemp -d)"
 CONFIG_DIR="/etc/xray"
 CONFIG_FILE="$CONFIG_DIR/config.json"
-DIST_DIR="/opt/xray"
+PREFIX="/opt/xray" # base directory to install xray files
 echo "TEMP DIR: $TMP_DIR"
 
 exit_cleanup() {
@@ -28,9 +28,9 @@ check_geodata_file() {
 }
 
 download_geodata() {
-    local DOWNLOAD_PREFIX="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/"
-    local REMOTE_GEOIP_FILE="$DOWNLOAD_PREFIX/geoip.dat"
-    local REMOTE_GEOSITE_FILE="$DOWNLOAD_PREFIX/geosite.dat"
+    local REMOTE_BASE_PATH="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/"
+    local REMOTE_GEOIP_FILE="$REMOTE_BASE_PATH/geoip.dat"
+    local REMOTE_GEOSITE_FILE="$REMOTE_BASE_PATH/geosite.dat"
     local LOCAL_GEOIP_FILE="$TMP_DIR/geoip.dat"
     local LOCAL_GEOSITE_FILE="$TMP_DIR/geosite.dat"
     if ! download_file "$REMOTE_GEOIP_FILE" "$LOCAL_GEOIP_FILE"; then
@@ -52,8 +52,7 @@ download_geodata() {
     return 0
 }
 download_xray() {
-    local DOWNLOAD_PREFIX="https://github.com/XTLS/Xray-core/releases/download"
-    local REMOTE_ARCHIVE_FILE="$DOWNLOAD_PREFIX/$VERSION/Xray-linux-64.zip"
+    local REMOTE_ARCHIVE_FILE="https://github.com/XTLS/Xray-core/releases/download/$VERSION/Xray-linux-64.zip"
     local REMOTE_DIGEST_FILE="$REMOTE_ARCHIVE_FILE.dgst"
     local LOCAL_ARCHIVE_FILE="$TMP_DIR/Xray-linux-64.$VERSION.zip"
     local LOCAL_XRAY_FILE="$TMP_DIR/xray"
@@ -113,10 +112,12 @@ install_config_files() {
 }
 
 install_dist_files() {
-    install -d "$DIST_DIR"
-    install -m 644 "$TMP_DIR/geoip.dat" "$DIST_DIR/geoip.dat"
-    install -m 644 "$TMP_DIR/geosite.dat" "$DIST_DIR/geosite.dat"
-    install -m 755 "$TMP_DIR/xray" "$DIST_DIR/xray"
+    install -d "$PREFIX"
+    install -d "$PREFIX/bin"
+    install -d "$PREFIX/share"
+    install -m 644 "$TMP_DIR/geoip.dat" "$PREFIX/share/geoip.dat"
+    install -m 644 "$TMP_DIR/geosite.dat" "$PREFIX/share/geosite.dat"
+    install -m 755 "$TMP_DIR/xray" "$PREFIX/bin/xray"
     return 0
 }
 

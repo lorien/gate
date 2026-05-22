@@ -154,15 +154,13 @@ http {
 	ssl_prefer_server_ciphers on;
 	access_log /var/log/nginx/access.log;
     server {
+        listen 127.0.0.1:7080;
         listen 127.0.0.1:7443 ssl;
         ssl_certificate $PREFIX/share/domain.crt;
         ssl_certificate_key $PREFIX/share/domain.key;
-        location / {
-            root /usr/share/doc/debian-handbook/html/ru-RU;
+        location /.well-known {
+            root $PREFIX/share;
         }
-    }
-    server {
-        listen 127.0.0.1:7080;
         location / {
             root /usr/share/doc/debian-handbook/html/ru-RU;
         }

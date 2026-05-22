@@ -1,19 +1,32 @@
 #!/bin/bash
 set -euo pipefail
-# --- define conig
+# --- define config
 XRAY_VERSION="v26.5.3"
 TELEMT_VERSION="3.4.12"
+# Build directory stores any files downloaded/unpacked/created during
+# the installation process. This directory is removed after the
+# installation scrit has done working.
 BUILD_DIR="$(mktemp -d)"
 XRAY_CONFIG_DIR="/etc/xray"
 XRAY_CONFIG_FILE="$XRAY_CONFIG_DIR/config.json"
 DOWNLOAD_DIR="$BUILD_DIR/download"
+# source dirs: where dist/source files are unpacked to
+SOURCE_DIR="$BUILD_DIR/source"
+XRAY_SOURCE_DIR="$SOURCE_DIR/xray"
+TELEMT_SOURCE_DIR="$SOURCE_DIR/telemt"
+# target dirs (where software is installed)
 PREFIX="/opt/gateway" # base directory to install everything
-BIN_DIR="$PREFIX/bin"
+XRAY_DIR="$PREFIX/xray"
+TELEMT_DIR="$PREFIX/telemt"
 
 # --- Create directories
 install -d "$DOWNLOAD_DIR"
 install -d "$PREFIX"
-install -d "$BIN_DIR"
+install -d "$XRAY_DIR"
+install -d "$TELEMT_DIR"
+install -d "$SOURCE_DIR"
+install -d "$XRAY_SOURCE_DIR"
+install -d "$TELEMT_SOURCE_DIR"
 
 echo "TEMP DIR: $BUILD_DIR"
 
@@ -22,7 +35,7 @@ exit_cleanup() {
     return 0
 }
 
-trap exit_cleanup EXIT INT TERM
+#trap exit_cleanup EXIT INT TERM
 
 build_sha256_digest() {
     local LOCAL_FILE="$1"
@@ -52,37 +65,31 @@ download_file() {
 check_geodata_file() {
     local GEO_FILE="$1"
     # This simple check works both with geoip.data and geosite.data
-    grep -qa GOOGLE "$GEO_FILE" && grep -qa TELEGRAM "$GEO_FILE"
+    if ! grep -qa GOOGLE "$GEO_FILE" || ! grep -qa TELEGRAM "$GEO_FILE"; then
+        echo "Downloaded geofile is invalid: $GEO_FILE"
+        exit 1
+    fi
 }
 
 download_geodata_files() {
     local REMOTE_BASE_PATH="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/"
     local REMOTE_GEOIP_FILE="$REMOTE_BASE_PATH/geoip.dat"
     local REMOTE_GEOSITE_FILE="$REMOTE_BASE_PATH/geosite.dat"
-    local LOCAL_GEOIP_FILE="$BUILD_DIR/geoip.dat"
-    local LOCAL_GEOSITE_FILE="$BUILD_DIR/geosite.dat"
+    local LOCAL_GEOIP_FILE="$DOWNLOAD_DIR/geoip.dat"
+    local LOCAL_GEOSITE_FILE="$DOWNLOAD_DIR/geosite.dat"
     download_file "$REMOTE_GEOIP_FILE" "$LOCAL_GEOIP_FILE"
-    if ! check_geodata_file "$LOCAL_GEOIP_FILE"; then
-        echo "Downloaded geoip.data file is invalid"
-        exit 1
-    fi
+    check_geodata_file "$LOCAL_GEOIP_FILE"
     download_file "$REMOTE_GEOSITE_FILE" "$LOCAL_GEOSITE_FILE"
-    if ! check_geodata_file "$LOCAL_GEOSITE_FILE"; then
-        echo "Downloaded geosite.data file is invalid"
-        exit 1
-    fi
-    return 0
+    check_geodata_file "$LOCAL_GEOSITE_FILE"
 }
 
-download_xray_archive() {
-    local REMOTE_ARCHIVE_FILE="https://github.com/XTLS/Xray-core/releases/download/$XRAY_VERSION/Xray-linux-64.zip"
-    local REMOTE_DIGEST_FILE="$REMOTE_ARCHIVE_FILE.dgst"
-    local LOCAL_ARCHIVE_FILE="$BUILD_DIR/Xray-linux-64.$XRAY_VERSION.zip"
-    local LOCAL_XRAY_FILE="$BUILD_DIR/xray"
-    download_file "$REMOTE_ARCHIVE_FILE" "$LOCAL_ARCHIVE_FILE"
-    VALID_HASH="$(download_file "$REMOTE_DIGEST_FILE" "-" | grep SHA2-256 | sed 's/.*= *//')"
-    check_sha256_digest "$LOCAL_ARCHIVE_FILE" "$VALID_HASH"
-    unzip -q -d "$BUILD_DIR" "$LOCAL_ARCHIVE_FILE"
+download_xray_dist() {
+    local REMOTE_FILE="https://github.com/XTLS/Xray-core/releases/download/$XRAY_VERSION/Xray-linux-64.zip"
+    local LOCAL_FILE="$DOWNLOAD_DIR/Xray-linux-64.$XRAY_VERSION.zip"
+    download_file "$REMOTE_FILE" "$LOCAL_FILE"
+    VALID_HASH="$(download_file "$REMOTE_FILE.dgst" "-" | grep SHA2-256 | sed 's/.*= *//')"
+    check_sha256_digest "$LOCAL_FILE" "$VALID_HASH"
+    unzip -q -d "$XRAY_SOURCE_DIR" "$LOCAL_FILE"
 }
 
 setup_xray_systemd() {
@@ -94,7 +101,7 @@ After=network.target nss-lookup.target
 
 [Service]
 User=root
-ExecStart=$BIN_DIR/xray run -config $XRAY_CONFIG_FILE
+ExecStart=$XRAY_DIR/xray run -config $XRAY_CONFIG_FILE
 Restart=on-failure
 RestartPreventExitStatus=23
 LimitNPROC=10000
@@ -108,28 +115,22 @@ EOF
     systemctl daemon-reload
     systemctl enable xray
     systemctl restart xray # that'll kill daemon if config wrong
-    return 0
 }
 
-install_xray_config_files() {
+install_xray_config() {
     install -d "$XRAY_CONFIG_DIR"
     if [[ ! -e "$XRAY_CONFIG_FILE" ]]; then
         echo "{}" > "$XRAY_CONFIG_FILE"
     fi
-    return 0
 }
 
-install_xray_dist_files() {
-    install -m 755 "$BUILD_DIR/xray" "$BIN_DIR/xray"
-    return 0
+install_xray_bin() {
+    install -m 755 "$XRAY_SOURCE_DIR/xray" "$XRAY_DIR/xray"
 }
 
-install_xray_geodata_files() {
-    install -d "$PREFIX"
-    install -d "$PREFIX/share"
-    install -m 644 "$BUILD_DIR/geoip.dat" "$PREFIX/share/geoip.dat"
-    install -m 644 "$BUILD_DIR/geosite.dat" "$PREFIX/share/geosite.dat"
-    return 0
+install_xray_geodata() {
+    install -m 644 "$DOWNLOAD_DIR/geoip.dat" "$XRAY_DIR/geoip.dat"
+    install -m 644 "$DOWNLOAD_DIR/geosite.dat" "$XRAY_DIR/geosite.dat"
 }
 
 display_service_status() {
@@ -227,14 +228,13 @@ download_telemt_dist() {
     download_file "$REMOTE_ARCHIVE" "$LOCAL_ARCHIVE"
     VALID_HASH="$(download_file "$REMOTE_ARCHIVE.sha256" "-" | head -1 | sed 's/ .*$//')"
     check_sha256_digest "$LOCAL_ARCHIVE" "$VALID_HASH"
-    local DIST_DIR="$BUILD_DIR/telemt_dist"
-    install -d "$DIST_DIR"
-    tar -C "$DIST_DIR" -zxf "$LOCAL_ARCHIVE"
-    tree "$DIST_DIR"
+    install -d "$TELEMT_SOURCE_DIR"
+    tar -C "$TELEMT_SOURCE_DIR" -zxf "$LOCAL_ARCHIVE"
+    tree "$TELEMT_SOURCE_DIR"
 }
 
 install_telemt_bin() {
-    install -m 755 "$BUILD_DIR/telemt_dist/telemt" "$BIN_DIR/telemt"
+    install -m 755 "$TELEMT_SOURCE_DIR/telemt" "$TELEMT_DIR/telemt"
 }
 
 
@@ -255,18 +255,20 @@ RUN_NGINX=false
 main() {
     parse_cli_args "$@"
     if [[ $RUN_ONLY == false ]]; then
-        download_xray_archive || exit 1
-        install_xray_config_files || exit 1
-        install_xray_dist_files || exit 1
-        download_geodata_files || exit 1
-        install_xray_geodata_files || exit 1
-        setup_xray_systemd || exit 1
+        download_xray_dist
+        install_xray_config
+        install_xray_bin
+        download_geodata_files
+        install_xray_geodata
+        setup_xray_systemd
+        download_telemt_dist
+        install_telemt_bin
     fi
     if [[ $RUN_ONLY == false || $RUN_NGINX == true ]]; then
         generate_dummy_cert
         install_dummy_cert
-        install_handbook_files || exit 1
-        install_nginx || exit 1
+        install_handbook_files
+        install_nginx
     fi
     display_service_status "nginx"
     display_service_status "xray"

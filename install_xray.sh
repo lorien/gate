@@ -133,6 +133,54 @@ display_service_status() {
     echo "Service $name: $active_state/$sub_state"
 }
 
+make_file_backup() {
+    local filename="$1"
+    local timestamp="$(date +"%y%m%d%H%M%S")"
+    local new_filename="$filename.$timestamp.bak"
+    cp "$filename" "$new_filename"
+}
+
+prepare_nginx_config() {
+    local conf_file="$1"
+    cat > "$conf_file" <<EOF
+user www-data;
+pid /run/nginx.pid;
+error_log /var/log/nginx/error.log;
+events {}
+http {
+	include /etc/nginx/mime.types;
+	default_type application/octet-stream;
+	ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3;
+	ssl_prefer_server_ciphers on;
+	access_log /var/log/nginx/access.log;
+    server {
+        listen 127.0.0.1:7080;
+        location / {
+            root /usr/share/doc/debian-handbook/html/ru-RU;
+        }
+    }
+}
+EOF
+}
+
+install_nginx() {
+    apt install nginx
+    # at this point the "/etc/nginx/nginx.conf" must exist
+    systemctl stop nginx
+    local nginx_config="/etc/nginx/nginx.conf"
+    local new_config="$TMP_DIR/nginx.conf"
+    prepare_nginx_config "$new_config"
+    if ! diff "$nginx_config" "$new_config" &>/dev/null; then
+        make_file_backup "$nginx_config"
+    fi
+    cp "$new_config" "$nginx_config"
+    systemctl restart nginx
+}
+
+install_handbook_files() {
+    apt install debian-handbook
+}
+
 main() {
     download_xray_archive || exit 1
     install_xray_config_files || exit 1
@@ -140,6 +188,8 @@ main() {
     download_geodata_files || exit 1
     install_xray_geodata_files || exit 1
     setup_xray_systemd || exit 1
+    install_handbook_files || exit 1
+    install_nginx || exit 1
     display_service_status "nginx"
     display_service_status "xray"
     echo "OK"

@@ -154,6 +154,14 @@ http {
 	ssl_prefer_server_ciphers on;
 	access_log /var/log/nginx/access.log;
     server {
+        listen 127.0.0.1:7443 ssl;
+        ssl_certificate $PREFIX/share/domain.crt;
+        ssl_certificate_key $PREFIX/share/domain.key;
+        location / {
+            root /usr/share/doc/debian-handbook/html/ru-RU;
+        }
+    }
+    server {
         listen 127.0.0.1:7080;
         location / {
             root /usr/share/doc/debian-handbook/html/ru-RU;
@@ -180,6 +188,28 @@ install_nginx() {
 install_handbook_files() {
     apt install debian-handbook
 }
+
+generate_dummy_cert() {
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+      -out "$TMP_DIR/dummy.crt" \
+      -keyout "$TMP_DIR/dummy.key" \
+      -subj "/CN=doesnotmatter" \
+      -addext "subjectAltName=IP:1.1.1.1"
+}
+
+install_dummy_cert() {
+    install -d "$PREFIX"
+    install -d "$PREFIX/share"
+    install -m 600 "$TMP_DIR/dummy.crt" "$PREFIX/share/dummy.crt"
+    install -m 600 "$TMP_DIR/dummy.key" "$PREFIX/share/dummy.key"
+    # prepare links in temp location
+    ln -s "$PREFIX/share/dummy.crt" "$TMP_DIR/domain.crt"
+    ln -s "$PREFIX/share/dummy.key" "$TMP_DIR/domain.key"
+    # mv prepared links to target destination
+    mv "$TMP_DIR/domain.crt" "$PREFIX/share/domain.crt"
+    mv "$TMP_DIR/domain.key" "$PREFIX/share/domain.key"
+}
+
 
 parse_cli_args() {
     while [ $# -gt 0 ]; do
@@ -208,6 +238,8 @@ main() {
     if [[ $RUN_ONLY == false || $RUN_NGINX == true ]]; then
         install_handbook_files || exit 1
         install_nginx || exit 1
+        generate_dummy_cert
+        install_dummy_cert
     fi
     display_service_status "nginx"
     display_service_status "xray"

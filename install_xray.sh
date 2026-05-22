@@ -1,13 +1,20 @@
 #!/bin/bash
 set -euo pipefail
+# --- define conig
 XRAY_VERSION="v26.5.3"
 TELEMT_VERSION="3.4.12"
 BUILD_DIR="$(mktemp -d)"
 XRAY_CONFIG_DIR="/etc/xray"
-XRAY_CONFIG_FILE="$CONFIG_DIR/config.json"
+XRAY_CONFIG_FILE="$XRAY_CONFIG_DIR/config.json"
 DOWNLOAD_DIR="$BUILD_DIR/download"
-install -d "$DOWNLOAD_DIR"
 PREFIX="/opt/gateway" # base directory to install everything
+BIN_DIR="$PREFIX/bin"
+
+# --- Create directories
+install -d "$DOWNLOAD_DIR"
+install -d "$PREFIX"
+install -d "$BIN_DIR"
+
 echo "TEMP DIR: $BUILD_DIR"
 
 exit_cleanup() {
@@ -110,9 +117,7 @@ install_xray_config_files() {
 }
 
 install_xray_dist_files() {
-    install -d "$PREFIX"
-    install -d "$PREFIX/bin"
-    install -m 755 "$BUILD_DIR/xray" "$PREFIX/bin/xray"
+    install -m 755 "$BUILD_DIR/xray" "$BIN_DIR/xray"
     return 0
 }
 

@@ -181,15 +181,34 @@ install_handbook_files() {
     apt install debian-handbook
 }
 
+parse_cli_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            nginx) RUN_ONLY=true; RUN_NGINX=true ;;
+            --) shift; break ;;
+            *) echo "Unknown option: $1"; exit 1 ;;
+        esac
+        shift
+    done
+}
+
+RUN_ONLY=false
+RUN_NGINX=false
+
 main() {
-    download_xray_archive || exit 1
-    install_xray_config_files || exit 1
-    install_xray_dist_files || exit 1
-    download_geodata_files || exit 1
-    install_xray_geodata_files || exit 1
-    setup_xray_systemd || exit 1
-    install_handbook_files || exit 1
-    install_nginx || exit 1
+    parse_cli_args "$@"
+    if [[ $RUN_ONLY == false ]]; then
+        download_xray_archive || exit 1
+        install_xray_config_files || exit 1
+        install_xray_dist_files || exit 1
+        download_geodata_files || exit 1
+        install_xray_geodata_files || exit 1
+        setup_xray_systemd || exit 1
+    fi
+    if [[ $RUN_ONLY == false || $RUN_NGINX == true ]]; then
+        install_handbook_files || exit 1
+        install_nginx || exit 1
+    fi
     display_service_status "nginx"
     display_service_status "xray"
     echo "OK"

@@ -27,7 +27,7 @@ check_geodata_file() {
     grep -qa GOOGLE "$GEO_FILE" && grep -qa TELEGRAM "$GEO_FILE"
 }
 
-download_geodata() {
+download_geodata_files() {
     local REMOTE_BASE_PATH="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/"
     local REMOTE_GEOIP_FILE="$REMOTE_BASE_PATH/geoip.dat"
     local REMOTE_GEOSITE_FILE="$REMOTE_BASE_PATH/geosite.dat"
@@ -51,7 +51,7 @@ download_geodata() {
     fi
     return 0
 }
-download_xray() {
+download_xray_archive() {
     local REMOTE_ARCHIVE_FILE="https://github.com/XTLS/Xray-core/releases/download/$VERSION/Xray-linux-64.zip"
     local REMOTE_DIGEST_FILE="$REMOTE_ARCHIVE_FILE.dgst"
     local LOCAL_ARCHIVE_FILE="$TMP_DIR/Xray-linux-64.$VERSION.zip"
@@ -77,7 +77,7 @@ download_xray() {
     return 0
 }
 
-setup_systemd() {
+setup_xray_systemd() {
     cat >/etc/systemd/system/xray.service <<EOF
 [Unit]
 Description=Xray Service
@@ -103,7 +103,7 @@ EOF
     return 0
 }
 
-install_config_files() {
+install_xray_config_files() {
     install -d "$CONFIG_DIR"
     if [[ ! -e "$CONFIG_FILE" ]]; then
         echo "{}" > "$CONFIG_FILE"
@@ -111,19 +111,38 @@ install_config_files() {
     return 0
 }
 
-install_dist_files() {
+install_xray_dist_files() {
     install -d "$PREFIX"
     install -d "$PREFIX/bin"
-    install -d "$PREFIX/share"
-    install -m 644 "$TMP_DIR/geoip.dat" "$PREFIX/share/geoip.dat"
-    install -m 644 "$TMP_DIR/geosite.dat" "$PREFIX/share/geosite.dat"
     install -m 755 "$TMP_DIR/xray" "$PREFIX/bin/xray"
     return 0
 }
 
-download_xray || exit 1
-download_geodata || exit 1
-setup_systemd || exit 1
-install_config_files || exit 1
-install_dist_files || exit 1
-systemctl status xray
+install_xray_geodata_files() {
+    install -d "$PREFIX"
+    install -d "$PREFIX/share"
+    install -m 644 "$TMP_DIR/geoip.dat" "$PREFIX/share/geoip.dat"
+    install -m 644 "$TMP_DIR/geosite.dat" "$PREFIX/share/geosite.dat"
+    return 0
+}
+
+display_service_status() {
+    local name="$1"
+    local active_state="$(systemctl show -p ActiveState xray | cut -d'=' -f2)"
+    local sub_state="$(systemctl show -p SubState xray | cut -d'=' -f2)"
+    echo "Service $name: $active_state/$sub_state"
+}
+
+main() {
+    download_xray_archive || exit 1
+    install_xray_config_files || exit 1
+    install_xray_dist_files || exit 1
+    download_geodata_files || exit 1
+    install_xray_geodata_files || exit 1
+    setup_xray_systemd || exit 1
+    display_service_status "nginx"
+    display_service_status "xray"
+    echo "OK"
+}
+
+main "$@"

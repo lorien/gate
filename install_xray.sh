@@ -204,8 +204,14 @@ install_dummy_cert() {
     ln -s "$PREFIX/share/dummy.crt" "$TMP_DIR/domain.crt"
     ln -s "$PREFIX/share/dummy.key" "$TMP_DIR/domain.key"
     # mv prepared links to target destination
-    mv "$TMP_DIR/domain.crt" "$PREFIX/share/domain.crt"
-    mv "$TMP_DIR/domain.key" "$PREFIX/share/domain.key"
+    # only if target destination is not link or it is broken link
+    if [[ ! -L "$PREFIX/share/domain.crt" ]] \
+        || [[ ! -f "$PREFIX/share/domain.crt" ]] \
+        || [[ ! -L "$PREFIX/share/domain.key" ]] \
+        || [[ ! -f "$PREFIX/share/domain.key" ]]; then
+        mv "$TMP_DIR/domain.crt" "$PREFIX/share/domain.crt"
+        mv "$TMP_DIR/domain.key" "$PREFIX/share/domain.key"
+    fi
 }
 
 
@@ -234,10 +240,10 @@ main() {
         setup_xray_systemd || exit 1
     fi
     if [[ $RUN_ONLY == false || $RUN_NGINX == true ]]; then
-        install_handbook_files || exit 1
-        install_nginx || exit 1
         generate_dummy_cert
         install_dummy_cert
+        install_handbook_files || exit 1
+        install_nginx || exit 1
     fi
     display_service_status "nginx"
     display_service_status "xray"

@@ -24,6 +24,16 @@ exit_cleanup() {
 
 trap exit_cleanup EXIT INT TERM
 
+check_sha256_digest() {
+    local LOCAL_FILE="$1"
+    local VALID_HASH="$2"
+    FILE_HASH="$(sha256_file_hash "$LOCAL_FILE")"
+    if [[ "$VALID_HASH" != "$FILE_HASH" ]]; then
+        echo "File $LOCAL_FILE has invalid SHA256 digest: $FILE_HASH"
+        exit 1
+    fi
+}
+
 download_file() {
     local REMOTE_FILE="$1"
     local LOCAL_FILE="$2"
@@ -67,19 +77,8 @@ download_xray_archive() {
     download_file "$REMOTE_ARCHIVE_FILE" "$LOCAL_ARCHIVE_FILE"
     VALID_HASH="$(download_file "$REMOTE_DIGEST_FILE" "-" | grep SHA2-256 | sed 's/.*= *//')"
     FILE_HASH="$(sha256_file_hash "$LOCAL_ARCHIVE_FILE")"
-    if [ "$VALID_HASH" != "$FILE_HASH" ]; then
-        echo "Downloaded file has incorrect checksum: $REMOTE_ARCHIVE_FILE"
-        return 1
-    fi
-    if ! unzip -q -d "$BUILD_DIR" "$LOCAL_ARCHIVE_FILE"; then
-        echo "Failed to unpack xray archive into temp directory"
-        return 1
-    fi
-    if [[ ! -f "$LOCAL_XRAY_FILE" ]]; then
-        echo "No xray file found in unpacked files"
-        return 1
-    fi
-    return 0
+    check_sha256_digest "$LOCAL_ARCHIVE_FILE" "$VALID_HASH"
+    unzip -q -d "$BUILD_DIR" "$LOCAL_ARCHIVE_FILE"
 }
 
 setup_xray_systemd() {

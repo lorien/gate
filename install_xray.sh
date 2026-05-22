@@ -1,14 +1,17 @@
 #!/bin/bash
 set -euo pipefail
-VERSION="v26.5.3"
-TMP_DIR="$(mktemp -d)"
-CONFIG_DIR="/etc/xray"
-CONFIG_FILE="$CONFIG_DIR/config.json"
-PREFIX="/opt/xray" # base directory to install xray files
-echo "TEMP DIR: $TMP_DIR"
+XRAY_VERSION="v26.5.3"
+TELEMT_VERSION="3.4.12"
+BUILD_DIR="$(mktemp -d)"
+XRAY_CONFIG_DIR="/etc/xray"
+XRAY_CONFIG_FILE="$CONFIG_DIR/config.json"
+DOWNLOAD_DIR="$BUILD_DIR/download"
+install -d "$DOWNLOAD_DIR"
+PREFIX="/opt/gateway" # base directory to install everything
+echo "TEMP DIR: $BUILD_DIR"
 
 exit_cleanup() {
-    rm -rf "$TMP_DIR"
+    rm -rf "$BUILD_DIR"
     return 0
 }
 
@@ -34,8 +37,8 @@ download_geodata_files() {
     local REMOTE_BASE_PATH="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/"
     local REMOTE_GEOIP_FILE="$REMOTE_BASE_PATH/geoip.dat"
     local REMOTE_GEOSITE_FILE="$REMOTE_BASE_PATH/geosite.dat"
-    local LOCAL_GEOIP_FILE="$TMP_DIR/geoip.dat"
-    local LOCAL_GEOSITE_FILE="$TMP_DIR/geosite.dat"
+    local LOCAL_GEOIP_FILE="$BUILD_DIR/geoip.dat"
+    local LOCAL_GEOSITE_FILE="$BUILD_DIR/geosite.dat"
     download_file "$REMOTE_GEOIP_FILE" "$LOCAL_GEOIP_FILE"
     if ! check_geodata_file "$LOCAL_GEOIP_FILE"; then
         echo "Downloaded geoip.data file is invalid"
@@ -50,18 +53,18 @@ download_geodata_files() {
 }
 
 download_xray_archive() {
-    local REMOTE_ARCHIVE_FILE="https://github.com/XTLS/Xray-core/releases/download/$VERSION/Xray-linux-64.zip"
+    local REMOTE_ARCHIVE_FILE="https://github.com/XTLS/Xray-core/releases/download/$XRAY_VERSION/Xray-linux-64.zip"
     local REMOTE_DIGEST_FILE="$REMOTE_ARCHIVE_FILE.dgst"
-    local LOCAL_ARCHIVE_FILE="$TMP_DIR/Xray-linux-64.$VERSION.zip"
-    local LOCAL_XRAY_FILE="$TMP_DIR/xray"
+    local LOCAL_ARCHIVE_FILE="$BUILD_DIR/Xray-linux-64.$XRAY_VERSION.zip"
+    local LOCAL_XRAY_FILE="$BUILD_DIR/xray"
     download_file "$REMOTE_ARCHIVE_FILE" "$LOCAL_ARCHIVE_FILE"
     VALID_HASH="$(download_file "$REMOTE_DIGEST_FILE" "-" | grep SHA2-256 | sed 's/.*= *//')"
-    FILE_HASH="$(sha256sum "$LOCAL_ARCHIVE_FILE" | sed 's/ .*//')"
+    FILE_HASH="$(sha256_file_hash "$LOCAL_ARCHIVE_FILE")"
     if [ "$VALID_HASH" != "$FILE_HASH" ]; then
-        echo "Downloaded archive has incorrect hash sum"
+        echo "Downloaded file has incorrect checksum: $REMOTE_ARCHIVE_FILE"
         return 1
     fi
-    if ! unzip -q -d "$TMP_DIR" "$LOCAL_ARCHIVE_FILE"; then
+    if ! unzip -q -d "$BUILD_DIR" "$LOCAL_ARCHIVE_FILE"; then
         echo "Failed to unpack xray archive into temp directory"
         return 1
     fi
@@ -99,9 +102,9 @@ EOF
 }
 
 install_xray_config_files() {
-    install -d "$CONFIG_DIR"
-    if [[ ! -e "$CONFIG_FILE" ]]; then
-        echo "{}" > "$CONFIG_FILE"
+    install -d "$XRAY_CONFIG_DIR"
+    if [[ ! -e "$XRAY_CONFIG_FILE" ]]; then
+        echo "{}" > "$XRAY_CONFIG_FILE"
     fi
     return 0
 }
@@ -109,15 +112,15 @@ install_xray_config_files() {
 install_xray_dist_files() {
     install -d "$PREFIX"
     install -d "$PREFIX/bin"
-    install -m 755 "$TMP_DIR/xray" "$PREFIX/bin/xray"
+    install -m 755 "$BUILD_DIR/xray" "$PREFIX/bin/xray"
     return 0
 }
 
 install_xray_geodata_files() {
     install -d "$PREFIX"
     install -d "$PREFIX/share"
-    install -m 644 "$TMP_DIR/geoip.dat" "$PREFIX/share/geoip.dat"
-    install -m 644 "$TMP_DIR/geosite.dat" "$PREFIX/share/geosite.dat"
+    install -m 644 "$BUILD_DIR/geoip.dat" "$PREFIX/share/geoip.dat"
+    install -m 644 "$BUILD_DIR/geosite.dat" "$PREFIX/share/geosite.dat"
     return 0
 }
 
@@ -169,7 +172,7 @@ install_nginx() {
     # at this point the "/etc/nginx/nginx.conf" must exist
     systemctl stop nginx
     local nginx_config="/etc/nginx/nginx.conf"
-    local new_config="$TMP_DIR/nginx.conf"
+    local new_config="$BUILD_DIR/nginx.conf"
     prepare_nginx_config "$new_config"
     if ! diff "$nginx_config" "$new_config" &>/dev/null; then
         make_file_backup "$nginx_config"
@@ -184,8 +187,8 @@ install_handbook_files() {
 
 generate_dummy_cert() {
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-      -out "$TMP_DIR/dummy.crt" \
-      -keyout "$TMP_DIR/dummy.key" \
+      -out "$BUILD_DIR/dummy.crt" \
+      -keyout "$BUILD_DIR/dummy.key" \
       -subj "/CN=doesnotmatter" \
       -addext "subjectAltName=IP:1.1.1.1"
 }
@@ -193,20 +196,24 @@ generate_dummy_cert() {
 install_dummy_cert() {
     install -d "$PREFIX"
     install -d "$PREFIX/share"
-    install -m 600 "$TMP_DIR/dummy.crt" "$PREFIX/share/dummy.crt"
-    install -m 600 "$TMP_DIR/dummy.key" "$PREFIX/share/dummy.key"
+    install -m 600 "$BUILD_DIR/dummy.crt" "$PREFIX/share/dummy.crt"
+    install -m 600 "$BUILD_DIR/dummy.key" "$PREFIX/share/dummy.key"
     # prepare links in temp location
-    ln -s "$PREFIX/share/dummy.crt" "$TMP_DIR/domain.crt"
-    ln -s "$PREFIX/share/dummy.key" "$TMP_DIR/domain.key"
+    ln -s "$PREFIX/share/dummy.crt" "$BUILD_DIR/domain.crt"
+    ln -s "$PREFIX/share/dummy.key" "$BUILD_DIR/domain.key"
     # mv prepared links to target destination
     # only if target destination is not link or it is broken link
     if [[ ! -L "$PREFIX/share/domain.crt" ]] \
         || [[ ! -f "$PREFIX/share/domain.crt" ]] \
         || [[ ! -L "$PREFIX/share/domain.key" ]] \
         || [[ ! -f "$PREFIX/share/domain.key" ]]; then
-        mv "$TMP_DIR/domain.crt" "$PREFIX/share/domain.crt"
-        mv "$TMP_DIR/domain.key" "$PREFIX/share/domain.key"
+        mv "$BUILD_DIR/domain.crt" "$PREFIX/share/domain.crt"
+        mv "$BUILD_DIR/domain.key" "$PREFIX/share/domain.key"
     fi
+}
+
+sha256_file_hash() {
+    sha256sum "$1" | sed 's/ .*//'
 }
 
 

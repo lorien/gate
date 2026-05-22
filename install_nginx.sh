@@ -32,7 +32,7 @@ http {
             root $GATE_CERTBOT_DIR;
         }
         location / {
-            root /usr/share/doc/debian-handbook/html/ru-RU;
+            root /usr/share/doc/rust-doc/html;
         }
     }
 }
@@ -53,8 +53,8 @@ install_nginx() {
     systemctl restart nginx
 }
 
-install_handbook_files() {
-    apt install debian-handbook
+install_rust_docs() {
+    apt install rust-doc
 }
 
 generate_dummy_cert() {
@@ -85,7 +85,7 @@ install_dummy_cert() {
 main() {
     generate_dummy_cert
     install_dummy_cert
-    install_handbook_files
+    install_rust_docs
     install_nginx
     display_service_status "nginx"
 }

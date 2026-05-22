@@ -17,7 +17,10 @@ trap exit_cleanup EXIT INT TERM
 download_file() {
     local REMOTE_FILE="$1"
     local LOCAL_FILE="$2"
-    curl -fSLR "$REMOTE_FILE" -o "$LOCAL_FILE"
+    if ! curl --connect-timeout 5 -fSLR "$REMOTE_FILE" -o "$LOCAL_FILE"; then
+        echo "Failed to download file $REMOTE_FILE to $LOCAL_FILE"
+        exit 1
+    fi
 }
 
 
@@ -33,18 +36,12 @@ download_geodata_files() {
     local REMOTE_GEOSITE_FILE="$REMOTE_BASE_PATH/geosite.dat"
     local LOCAL_GEOIP_FILE="$TMP_DIR/geoip.dat"
     local LOCAL_GEOSITE_FILE="$TMP_DIR/geosite.dat"
-    if ! download_file "$REMOTE_GEOIP_FILE" "$LOCAL_GEOIP_FILE"; then
-        echo "Failed to download geoip file"
-        exit 1
-    fi
+    download_file "$REMOTE_GEOIP_FILE" "$LOCAL_GEOIP_FILE"
     if ! check_geodata_file "$LOCAL_GEOIP_FILE"; then
         echo "Downloaded geoip.data file is invalid"
         exit 1
     fi
-    if ! download_file "$REMOTE_GEOSITE_FILE" "$LOCAL_GEOSITE_FILE"; then
-        echo "Failed to download geosite file"
-        exit 1
-    fi
+    download_file "$REMOTE_GEOSITE_FILE" "$LOCAL_GEOSITE_FILE"
     if ! check_geodata_file "$LOCAL_GEOSITE_FILE"; then
         echo "Downloaded geosite.data file is invalid"
         exit 1
@@ -56,10 +53,7 @@ download_xray_archive() {
     local REMOTE_DIGEST_FILE="$REMOTE_ARCHIVE_FILE.dgst"
     local LOCAL_ARCHIVE_FILE="$TMP_DIR/Xray-linux-64.$VERSION.zip"
     local LOCAL_XRAY_FILE="$TMP_DIR/xray"
-    if ! download_file "$REMOTE_ARCHIVE_FILE" "$LOCAL_ARCHIVE_FILE"; then
-        echo "Fail to download xray archive"
-        return 1
-    fi
+    download_file "$REMOTE_ARCHIVE_FILE" "$LOCAL_ARCHIVE_FILE"
     VALID_HASH="$(download_file "$REMOTE_DIGEST_FILE" "-" | grep SHA2-256 | sed 's/.*= *//')"
     FILE_HASH="$(sha256sum "$LOCAL_ARCHIVE_FILE" | sed 's/ .*//')"
     if [ "$VALID_HASH" != "$FILE_HASH" ]; then

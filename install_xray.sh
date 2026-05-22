@@ -48,6 +48,7 @@ download_geodata_files() {
     fi
     return 0
 }
+
 download_xray_archive() {
     local REMOTE_ARCHIVE_FILE="https://github.com/XTLS/Xray-core/releases/download/$VERSION/Xray-linux-64.zip"
     local REMOTE_DIGEST_FILE="$REMOTE_ARCHIVE_FILE.dgst"
@@ -244,4 +245,6 @@ main() {
     echo "OK"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

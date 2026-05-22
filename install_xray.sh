@@ -24,10 +24,15 @@ exit_cleanup() {
 
 trap exit_cleanup EXIT INT TERM
 
+build_sha256_digest() {
+    local LOCAL_FILE="$1"
+    sha256sum "$LOCAL_FILE" | sed 's/ .*//'
+}
+
 check_sha256_digest() {
     local LOCAL_FILE="$1"
     local VALID_HASH="$2"
-    FILE_HASH="$(sha256_file_hash "$LOCAL_FILE")"
+    FILE_HASH="$(build_sha256_digest "$LOCAL_FILE")"
     if [[ "$VALID_HASH" != "$FILE_HASH" ]]; then
         echo "File $LOCAL_FILE has invalid SHA256 digest: $FILE_HASH"
         exit 1
@@ -76,7 +81,6 @@ download_xray_archive() {
     local LOCAL_XRAY_FILE="$BUILD_DIR/xray"
     download_file "$REMOTE_ARCHIVE_FILE" "$LOCAL_ARCHIVE_FILE"
     VALID_HASH="$(download_file "$REMOTE_DIGEST_FILE" "-" | grep SHA2-256 | sed 's/.*= *//')"
-    FILE_HASH="$(sha256_file_hash "$LOCAL_ARCHIVE_FILE")"
     check_sha256_digest "$LOCAL_ARCHIVE_FILE" "$VALID_HASH"
     unzip -q -d "$BUILD_DIR" "$LOCAL_ARCHIVE_FILE"
 }
@@ -216,8 +220,21 @@ install_dummy_cert() {
     fi
 }
 
-sha256_file_hash() {
-    sha256sum "$1" | sed 's/ .*//'
+download_telemt_dist() {
+    local ARCHIVE_FNAME="telemt-x86_64-linux-gnu.tar.gz"
+    local REMOTE_ARCHIVE="https://github.com/telemt/telemt/releases/download/$TELEMT_VERSION/$ARCHIVE_FNAME"
+    local LOCAL_ARCHIVE="$DOWNLOAD_DIR/$ARCHIVE_FNAME"
+    download_file "$REMOTE_ARCHIVE" "$LOCAL_ARCHIVE"
+    VALID_HASH="$(download_file "$REMOTE_ARCHIVE.sha256" "-" | head -1 | sed 's/ .*$//')"
+    check_sha256_digest "$LOCAL_ARCHIVE" "$VALID_HASH"
+    local DIST_DIR="$BUILD_DIR/telemt_dist"
+    install -d "$DIST_DIR"
+    tar -C "$DIST_DIR" -zxf "$LOCAL_ARCHIVE"
+    tree "$DIST_DIR"
+}
+
+install_telemt_bin() {
+    install -m 755 "$BUILD_DIR/telemt_dist/telemt" "$BIN_DIR/telemt"
 }
 
 

@@ -1,3 +1,3 @@
 ## Xray Installation Script
 
-I was in a mood to write some bash. Here it is.
+I was in the mood to write some bash. Here it is.

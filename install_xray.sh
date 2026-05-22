@@ -89,12 +89,12 @@ setup_xray_systemd() {
     cat >/etc/systemd/system/xray.service <<EOF
 [Unit]
 Description=Xray Service
-Documentation=https://github.com/xtls
+Documentation=https://xtls.github.io/en/
 After=network.target nss-lookup.target
 
 [Service]
 User=root
-ExecStart=/opt/xray/xray run -config /etc/xray/config.json
+ExecStart=$BIN_DIR/xray run -config $XRAY_CONFIG_FILE
 Restart=on-failure
 RestartPreventExitStatus=23
 LimitNPROC=10000
@@ -107,7 +107,7 @@ WantedBy=multi-user.target
 EOF
     systemctl daemon-reload
     systemctl enable xray
-    systemctl start xray
+    systemctl restart xray # that'll kill daemon if config wrong
     return 0
 }
 
